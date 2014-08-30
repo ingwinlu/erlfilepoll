@@ -1,4 +1,4 @@
--module(scanner).
+-module(filepoll_scanner).
 -behaviour(gen_server).
 -include_lib("kernel/include/file.hrl").
 -record(state,{directory, regex, timeout=1000, files=[], poll=0}).
