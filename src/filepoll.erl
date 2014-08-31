@@ -1,11 +1,11 @@
 -module(filepoll).
 -behaviour(gen_server).
--include_lib("kernel/include/file.hrl").
 -record(
     state,
-        {directory, 
-        regex, 
-        watchlist=[],
+        {
+        wpool,
+        directory, 
+        regex,
         lastpoll=0}
     ).
 
@@ -26,18 +26,17 @@ stop(Pid) ->
 
 %%%Server
 init([Directory, Regex]) ->
-    {ok, #state{directory=Directory, regex=Regex,watchlist=[], lastpoll=0}}.
-handle_call(
-        pull,
-        _From, 
-        State) ->
+    {ok, Wpool} = filepoll_wpool:start_link(),
+    {ok, #state{wpool=Wpool,directory=Directory, regex=Regex, lastpoll=0}}.
+
+handle_call(pull, _From, State) ->
     %check for new files
-    { NewPollTime, NewActions, NewWatchers  } = get_new_watchers(State#state.directory,State#state.regex,State#state.lastpoll),
-    %check old files
-    Updates = get_updates(State#state.watchlist),
-    %erlang:display(Updates),
+    NewPollTime = handle_new_files(State),
+    %pull updates
+    %error_logger:info_msg("pull updates: ~n",[]),
+    Updates = filepoll_wpool:pull(State#state.wpool),
     %send action list
-    {reply,NewActions++Updates,State#state{lastpoll=NewPollTime, watchlist=State#state.watchlist++NewWatchers}};
+    {reply,Updates,State#state{lastpoll=NewPollTime}};
 handle_call(terminate, _From, State) ->
     {stop, normal, ok, State}.
 
@@ -56,36 +55,15 @@ terminate(normal, State) ->
     ok.
 
 %%%Private
-get_new_watchers(Directory, Regex, LastPollTime) ->
+handle_new_files(State) ->
     NewPollTime = {date(), time()},
-    {NewActions,NewWatchers} = filelib:fold_files(
-        Directory, 
-        Regex, 
+    filelib:fold_files(
+        State#state.directory, 
+        State#state.regex, 
         true, 
-        fun(File, {Actions, Watchers}) -> 
-            {ok, FileInfo} = file:read_file_info(File),
-            FileCtime = FileInfo#file_info.ctime,
-            if 
-                FileCtime>LastPollTime ->
-                    NewAction = {File, created, FileCtime},
-                    {ok, NewWatcher} = filepoll_watcher:start_link(File),
-                    {[NewAction|Actions],[NewWatcher|Watchers]};
-                true ->
-                    {Actions,Watchers}
-            end
+        fun(File, _) -> 
+            filepoll_wpool:start_watcher(State#state.wpool,File)
         end,
-        {[],[]}
+        []
     ),
-    %erlang:display(NewActions),
-    %erlang:display(NewWatchers),
-    { NewPollTime, NewActions, NewWatchers}.
-
-get_updates(WatchList) ->
-    %erlang:display(WatchList),
-    lists:foldl(
-        fun(Watcher, Actionlist) ->
-            %erlang:display(Watcher),
-            [filepoll_watcher:update(Watcher)|Actionlist] end,
-        [],
-        WatchList
-    ).
+    NewPollTime.

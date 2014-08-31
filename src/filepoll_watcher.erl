@@ -3,7 +3,7 @@
 -include_lib("kernel/include/file.hrl").
 -record(state,{file, lastpoll=0}).
 
--export([start_link/1,stop/1,update/1]).
+-export([start_link/1,stop/1,update/1,file/1]).
 -export([init/1,handle_call/3,handle_cast/2,handle_info/2,code_change/3,terminate/2]).
 
 %%%Client API
@@ -18,6 +18,9 @@ stop(Pid) ->
 %%update information on file
 update(Pid) ->
     gen_server:call(Pid, update).
+%%get File
+file(Pid) ->
+    gen_server:call(Pid, file).
 
 %%%Server API
 init([File]) ->
@@ -29,7 +32,6 @@ handle_call(update, _From, State) ->
     case file:read_file_info(State#state.file) of
         {ok, FileInfo} ->             
             FileMtime = FileInfo#file_info.mtime,
-            %io:fwrite("~w~n",[FileInfo]),
             if 
                 FileMtime>State#state.lastpoll ->
                     {reply,{State#state.file, modified, FileMtime},State#state{lastpoll=NewPollTime}};
@@ -39,6 +41,8 @@ handle_call(update, _From, State) ->
         _              -> 
             {reply,{State#state.file, deleted, NewPollTime},State#state{lastpoll=NewPollTime}}
     end;
+handle_call(file, _From, State) ->
+    {reply,State#state.file, State};
 handle_call(terminate, _From, State) ->
     {stop, normal, ok, State}.
 
