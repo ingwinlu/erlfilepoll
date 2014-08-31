@@ -1,6 +1,6 @@
 -module(filepoll_wpool).
 -behaviour(gen_server).
--record(state,{watchers=[], files=[], events=[]}).
+-record(state,{watchers=[], files=[]}).
 
 -export([start_link/0,stop/1,pull/1,start_watcher/2]).
 -export([init/1,handle_call/3,handle_cast/2,handle_info/2,code_change/3,terminate/2]).
@@ -31,7 +31,7 @@ handle_call(terminate, _From, State) ->
 handle_call(pull, _From, State) ->
     Events = lists:map(
         fun(Watcher) ->
-            case filepoll_watcher:update(Watcher) of
+            case filepoll_watcher:pull(Watcher) of
                 {File, deleted, Time} ->
                     timer:send_after(0,{stop_watch,Watcher}),
                     {File, deleted, Time};
@@ -41,19 +41,15 @@ handle_call(pull, _From, State) ->
         end,
         State#state.watchers
     ),
-    {reply,State#state.events ++ Events,State#state{events=[]}};
+    {reply,Events,State};
 handle_call({start_watch, File}, _From, State) ->
     case lists:member(File,State#state.files) of
         false -> %%not watched yet, start the machinery!
-            %error_logger:info_msg("Start: ~w~n",[File]),
             {ok, NewPid} = filepoll_watcher:start_link(File),
             Watchers = [NewPid|State#state.watchers],
-            Events = [create_file_event(File)|State#state.events],
             Files = [File|State#state.files],
-            %error_logger:info_msg("Done: ~w~n",[File]),
-            {reply, ok, #state{watchers=Watchers, events=Events, files=Files}};
+            {reply, ok, #state{watchers=Watchers, files=Files}};
         _ -> %%already watched, ignore
-            %error_logger:info_msg("Ignore: ~w~n",[File]),
             {reply, already_running, State}
     end.
 
@@ -76,5 +72,3 @@ terminate(normal, State) ->
     error_logger:info_msg("Last state: ~w~n",[State]),
     ok.
 %%private
-create_file_event(File) ->
-    {File, created, {date(),time()}}.
