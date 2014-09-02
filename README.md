@@ -6,7 +6,7 @@ Queries if files in watched directory have been created, modified, deleted.
 ## Usage ##
 Add to your `rebar.config` deps:
 
-    {'filepoll',    ".*",    {git, "git://github.com/ingwinlu/erlfilepoll.git"}}
+    {filepoll,    ".*",    {git, "git://github.com/ingwinlu/erlfilepoll.git"}}
 
 Start the filepoller and specify a directory and a regex to match against:
 
